@@ -88,7 +88,7 @@
   // Cloudflare's public relay. Use the DRAFT-VERSIONED host that matches our
   // moq-lite client — the generic relay.* host is an older draft our client
   // can't negotiate (WebTransport fails → WS fallback → 403). Override with
-  // ?relay=<url> if Cloudflare bumps the draft.
+  // ?relay=https://your-relay-url if Cloudflare bumps the draft.
   const RELAY = new URLSearchParams(location.search).get("relay")
     || "https://draft-14.cloudflare.mediaoverquic.com";
   const rand = () => "mq-" + Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
