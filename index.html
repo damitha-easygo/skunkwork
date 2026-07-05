@@ -3,7 +3,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>MoQ · Cloudflare relay test</title>
-
 <style>
   :root{
     --bg:#0b0e14; --panel:#131924; --panel2:#0f141d; --hair:#232d3c; --hair2:#2e3a4c;
@@ -85,8 +84,12 @@
 </div>
 
 <script>
-  // Cloudflare's public relay. No token; the broadcast NAME is the only privacy.
-  const RELAY = "https://relay.cloudflare.mediaoverquic.com";
+  // Cloudflare's public relay. Use the DRAFT-VERSIONED host that matches our
+  // moq-lite client — the generic relay.* host is an older draft our client
+  // can't negotiate (WebTransport fails → WS fallback → 403). Override with
+  // ?relay=<url> if Cloudflare bumps the draft.
+  const RELAY = new URLSearchParams(location.search).get("relay")
+    || "https://draft-14.cloudflare.mediaoverquic.com";
   const rand = () => "mq-" + Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
 
   // Broadcast name: from #hash if present (so a shared URL uses the same one), else random.
