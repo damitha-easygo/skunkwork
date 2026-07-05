@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MoQ · Cloudflare relay test</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131924; --panel2:#0f141d; --hair:#232d3c; --hair2:#2e3a4c;
+    --ink:#e7edf5; --muted:#8b99ac; --accent:#5b9dff; --live:#34d399; --warn:#f5a524;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:1.6rem 1.2rem 3rem}
+  h1{font-size:1.2rem;margin:0 0 .2rem;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:.85rem;margin:0 0 1.2rem}
+  .sub code{font:.85em var(--mono);background:#1b2431;border:1px solid var(--hair);border-radius:5px;padding:.05em .35em;color:#cdd9e8}
+  .namebar{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--hair);border-radius:12px;padding:.7rem .9rem;margin-bottom:1.2rem}
+  .namebar label{font:600 .68rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .namebar input{flex:1;min-width:200px;font:600 .9rem var(--mono);background:var(--panel2);border:1px solid var(--hair2);border-radius:8px;color:var(--ink);padding:.45rem .6rem}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:1rem 1.1rem}
+  .card h2{font:700 .72rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 .7rem}
+  .stage{position:relative;background:#000;border:1px solid var(--hair);border-radius:10px;overflow:hidden;aspect-ratio:16/9;display:grid}
+  moq-publish,moq-watch{grid-area:1/1;width:100%;height:100%}
+  moq-publish video{width:100%;height:100%;object-fit:contain;transform:scaleX(-1)}
+  moq-watch canvas,moq-watch video{width:100%;height:100%;object-fit:contain;display:block}
+  .bar{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.8rem}
+  button{font:inherit;font-weight:600;padding:.42rem 1rem;border:1px solid var(--hair2);background:var(--panel2);color:var(--ink);border-radius:999px;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.45;cursor:default}
+  button.go{background:var(--accent);border-color:var(--accent);color:#fff}
+  label.chk{display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:.88rem}
+  .status{margin-top:.7rem;font:.82rem var(--mono);color:var(--muted)}
+  .status.live{color:var(--live)}
+  .status.err{color:var(--warn)}
+  footer{margin-top:1.6rem;color:var(--muted);font:.8rem/1.5 var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Media over QUIC — Cloudflare relay test</h1>
+  <p class="sub">Publishes &amp; watches through Cloudflare's public relay <code>relay.cloudflare.mediaoverquic.com</code> (no auth). Served over HTTPS (GitHub Pages) so WebTransport + camera work. Share this page's URL to another device to publish on one and watch on the other.</p>
+
+  <div class="namebar">
+    <label for="name">Broadcast</label>
+    <input id="name" spellcheck="false" />
+    <button id="copy">Copy shareable link</button>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>Publish · this device's camera</h2>
+      <div class="stage">
+        <moq-publish id="pub"><video muted autoplay playsinline></video></moq-publish>
+      </div>
+      <div class="bar">
+        <button id="golive" class="go">Go live</button>
+        <button id="stoppub" disabled>Stop</button>
+        <label class="chk"><input type="checkbox" id="mic" /> mic</label>
+      </div>
+      <div class="status" id="pubstatus">idle</div>
+    </div>
+
+    <div class="card">
+      <h2>Watch</h2>
+      <div class="stage">
+        <moq-watch id="wat" muted><canvas></canvas></moq-watch>
+      </div>
+      <div class="bar">
+        <button id="watch" class="go">Watch</button>
+        <button id="stopwatch" disabled>Stop</button>
+      </div>
+      <div class="status" id="watchstatus">idle</div>
+    </div>
+  </div>
+
+  <footer>
+    Relay: relay.cloudflare.mediaoverquic.com · no auth (use an unguessable name) · WebTransport only (Chrome/Edge; not Safari).<br>
+    Publish + Watch the same name on one device = loopback self-test through Cloudflare.
+  </footer>
+</div>
+
+<script>
+  // Cloudflare's public relay. No token; the broadcast NAME is the only privacy.
+  const RELAY = "https://relay.cloudflare.mediaoverquic.com";
+  const rand = () => "mq-" + Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
+
+  // Broadcast name: from #hash if present (so a shared URL uses the same one), else random.
+  const hashName = () => new URLSearchParams(location.hash.slice(1)).get("name");
+  let name = hashName() || rand();
+  const nameEl = document.getElementById("name");
+  nameEl.value = name;
+  const syncHash = () => { location.hash = "name=" + encodeURIComponent(name); };
+  syncHash();
+
+  const pub = document.getElementById("pub");
+  const wat = document.getElementById("wat");
+  const pubStatus = document.getElementById("pubstatus");
+  const watchStatus = document.getElementById("watchstatus");
+
+  // Connect endpoints up front; publishing waits for a source, watching for a name.
+  pub.setAttribute("url", RELAY);
+  pub.setAttribute("announce", "source"); // publish once the camera is on
+  pub.setAttribute("muted", "");           // mic off until toggled
+  wat.setAttribute("url", RELAY);
+
+  function applyName() {
+    name = nameEl.value.trim() || rand();
+    nameEl.value = name;
+    syncHash();
+    pub.setAttribute("name", name);
+    if (!document.getElementById("watch").disabled === false) wat.setAttribute("name", name);
+  }
+  pub.setAttribute("name", name);
+  nameEl.addEventListener("change", applyName);
+  document.getElementById("copy").onclick = () => {
+    navigator.clipboard?.writeText(location.href);
+    document.getElementById("copy").textContent = "Copied!";
+    setTimeout(() => (document.getElementById("copy").textContent = "Copy shareable link"), 1200);
+  };
+
+  // --- Publish ---
+  const golive = document.getElementById("golive"), stoppub = document.getElementById("stoppub"), mic = document.getElementById("mic");
+  golive.onclick = () => {
+    applyName();
+    pub.setAttribute("source", "camera"); // user gesture → getUserMedia
+    golive.disabled = true; stoppub.disabled = false;
+    pubStatus.textContent = "● LIVE — publishing " + name; pubStatus.className = "status live";
+  };
+  stoppub.onclick = () => {
+    pub.removeAttribute("source");
+    golive.disabled = false; stoppub.disabled = true;
+    pubStatus.textContent = "stopped"; pubStatus.className = "status";
+  };
+  mic.onchange = () => { mic.checked ? pub.removeAttribute("muted") : pub.setAttribute("muted", ""); };
+
+  // --- Watch ---
+  const watch = document.getElementById("watch"), stopwatch = document.getElementById("stopwatch");
+  watch.onclick = () => {
+    applyName();
+    wat.setAttribute("name", name);
+    watch.disabled = true; stopwatch.disabled = false;
+    watchStatus.textContent = "watching " + name + " …"; watchStatus.className = "status live";
+  };
+  stopwatch.onclick = () => {
+    wat.setAttribute("name", "");
+    watch.disabled = false; stopwatch.disabled = true;
+    watchStatus.textContent = "stopped"; watchStatus.className = "status";
+  };
+
+  window.addEventListener("error", (e) => { watchStatus.textContent = "error: " + e.message; watchStatus.className = "status err"; });
+  if (!("WebTransport" in window)) {
+    watchStatus.textContent = "This browser has no WebTransport — use Chrome or Edge (not Safari).";
+    watchStatus.className = "status err";
+  }
+</script>
+<script type="module" src="./app.js"></script>
+</body></html>
