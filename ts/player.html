@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ts player</title>
+  <script src="./lib/hls.min.js"></script>
+  <style>
+    :root { --kick: #53fc18; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #000; color: #fff;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+
+    /* URL loader (hidden once playing) */
+    #loader { position: fixed; z-index: 30; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px; background: #000; padding: 24px; }
+    #loader.hidden { display: none; }
+    #loader input { width: min(680px, 92vw); padding: 12px 14px; font-size: 15px; border-radius: 4px;
+      border: 1px solid #333; background: #141414; color: #fff; }
+    #loader button { padding: 11px 22px; font-size: 15px; font-weight: 700; border: 0; border-radius: 4px;
+      background: var(--kick); color: #000; cursor: pointer; }
+    #loader p { color: #888; font-size: 13px; max-width: 680px; text-align: center; }
+    #status { color: #e87c7c; min-height: 1.2em; }
+
+    /* stage */
+    #player { position: fixed; inset: 0; background: #000; overflow: hidden; cursor: default; }
+    #player.idle { cursor: none; }
+    #player.idle .controls, #player.idle .topbar { opacity: 0; pointer-events: none; }
+    video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+
+    /* gradient overlays */
+    .topbar, .controls { position: absolute; left: 0; right: 0; padding: 22px 28px;
+      transition: opacity .25s ease; z-index: 10; }
+    .topbar { top: 0; background: linear-gradient(#000b, #0000); }
+    .topbar .title { font-size: 20px; font-weight: 700; text-shadow: 0 1px 4px #000; }
+    .controls { bottom: 0; background: linear-gradient(#0000, #000d 70%); padding-top: 60px; }
+
+    /* center overlays */
+    .center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      z-index: 9; pointer-events: none; }
+    .big-play { width: 84px; height: 84px; border-radius: 50%; background: #000a; border: 2px solid #fff9;
+      display: none; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto;
+      transition: transform .12s ease, background .12s; }
+    .big-play:hover { transform: scale(1.06); background: #000c; }
+    #player.paused .big-play { display: flex; }
+    .spinner { width: 56px; height: 56px; border: 4px solid #fff3; border-top-color: #fff;
+      border-radius: 50%; display: none; animation: spin 1s linear infinite; }
+    #player.buffering:not(.paused) .spinner { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* scrub bar */
+    .scrub { position: relative; height: 16px; display: flex; align-items: center; cursor: pointer;
+      margin-bottom: 6px; touch-action: none; }
+    .scrub .track { position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px;
+      background: #ffffff40; transition: height .1s ease; }
+    .scrub:hover .track { height: 6px; }
+    .buffered, .played { position: absolute; left: 0; height: 4px; border-radius: 2px; transition: height .1s ease; }
+    .scrub:hover .buffered, .scrub:hover .played { height: 6px; }
+    .buffered { background: #ffffff55; }
+    .played { background: var(--kick); width: 0; }
+    .knob { position: absolute; left: 0; width: 13px; height: 13px; margin-left: -6.5px; border-radius: 50%;
+      background: var(--kick); transform: scale(0); transition: transform .1s ease; }
+    .scrub:hover .knob { transform: scale(1); }
+
+    /* hover thumbnail preview */
+    .thumb { position: absolute; bottom: 26px; transform: translateX(-50%); display: none;
+      background: #000; border: 2px solid #fff; border-radius: 5px; overflow: hidden;
+      box-shadow: 0 6px 24px #000a; pointer-events: none; width: 284px; }
+    .thumb img { display: block; width: 284px; height: 160px; object-fit: cover; background: #1a1a1a; }
+    .thumb .t { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center;
+      font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px #000; }
+
+    /* button row */
+    .btns { display: flex; align-items: center; gap: 20px; }
+    .btns .spacer { flex: 1; }
+    .btns .time { font-size: 14px; font-variant-numeric: tabular-nums; color: #eee; }
+    .btns .time .sep { color: #888; margin: 0 4px; }
+    button.icon { background: none; border: 0; padding: 0; color: #fff; cursor: pointer; line-height: 0;
+      opacity: .92; transition: transform .1s ease, opacity .1s; }
+    button.icon:hover { transform: scale(1.12); opacity: 1; }
+    button.icon svg { width: 26px; height: 26px; fill: currentColor; }
+    /* icon state toggles */
+    #player:not(.paused) .i-play, #player.paused .i-pause { display: none; }
+    #player:not(.muted) .i-muted, #player.muted .i-vol { display: none; }
+  </style>
+</head>
+<body>
+  <!-- URL loader -->
+  <div id="loader">
+    <h1 style="font-weight:800;letter-spacing:-.5px">TS Player</h1>
+    <input id="url" type="text" placeholder="HLS master .m3u8 URL" />
+    <button id="go">Play</button>
+    <p id="status"></p>
+    <p>Streams the VOD with hls.js. The scrub bar previews are decoded in-browser from ~16&nbsp;KB segment heads via WebAssembly — no thumbnail server.</p>
+  </div>
+
+  <!-- player -->
+  <div id="player" hidden>
+    <video id="video" playsinline></video>
+
+    <div class="topbar"><div class="title" id="title"></div></div>
+
+    <div class="center">
+      <div class="spinner"></div>
+      <div class="big-play" id="bigPlay" title="Play/Pause">
+        <svg viewBox="0 0 24 24" width="38" height="38" fill="#fff"><path class="i-play" d="M8 5v14l11-7z"/><g class="i-pause"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></g></svg>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="scrub" id="scrub">
+        <div class="track"></div>
+        <div class="buffered" id="buffered"></div>
+        <div class="played" id="played"></div>
+        <div class="knob" id="knob"></div>
+        <div class="thumb" id="thumb"><img id="thumbImg" alt=""><div class="t" id="thumbTime"></div></div>
+      </div>
+
+      <div class="btns">
+        <button class="icon" id="play" title="Play/Pause (space)">
+          <svg viewBox="0 0 24 24"><path class="i-play" d="M8 5v14l11-7z"/><g class="i-pause"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></g></svg>
+        </button>
+        <button class="icon" id="back10" title="Back 10s">
+          <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg>
+        </button>
+        <button class="icon" id="fwd10" title="Forward 10s">
+          <svg viewBox="0 0 24 24"><path d="M12 5V1l5 5-5 5V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/></svg>
+        </button>
+        <button class="icon" id="mute" title="Mute (m)">
+          <svg viewBox="0 0 24 24"><g class="i-vol"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16 7.5a5 5 0 0 1 0 9v-2a3 3 0 0 0 0-5v-2z"/></g><g class="i-muted"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M19 12l3-3-1.4-1.4L18 10.2 15.4 7.6 14 9l2.6 3L14 15l1.4 1.4L18 13.8l2.6 2.6L22 15z"/></g></svg>
+        </button>
+        <div class="time"><span id="cur">0:00</span><span class="sep">/</span><span id="dur">0:00</span></div>
+        <div class="spacer"></div>
+        <button class="icon" id="fs" title="Fullscreen (f)">
+          <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createPlayer } from './player.js';
+
+    const start = (url) => {
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('player').hidden = false;
+      let title = 'HLS VOD';
+      try { title = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).slice(0, 2).join(' · ')) || title; } catch {}
+      createPlayer(url, { title });
+      const share = new URL(location.href);
+      share.searchParams.set('src', url);
+      history.replaceState(null, '', share);
+    };
+
+    document.getElementById('go').addEventListener('click', () => {
+      const u = document.getElementById('url').value.trim();
+      if (u) start(u);
+    });
+    document.getElementById('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('go').click(); });
+
+    const initial = new URLSearchParams(location.search).get('src');
+    if (initial) { document.getElementById('url').value = initial; start(initial); }
+  </script>
+</body>
+</html>

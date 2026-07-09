@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HLS trickplay — hover preview</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #111; }
+    h1 { font-size: 20px; }
+    input[type=text] { width: 100%; padding: 8px; font: inherit; box-sizing: border-box; }
+    button { padding: 8px 14px; font: inherit; margin-top: 8px; }
+    #meta { color: #666; margin: 12px 0; min-height: 1.4em; }
+
+    /* seek bar */
+    #bar {
+      position: relative; height: 42px; margin: 40px 0 8px;
+      background: linear-gradient(#e7e7e7, #dcdcdc); border-radius: 6px; cursor: pointer;
+      user-select: none;
+    }
+    #played { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #22aa55aa; border-radius: 6px 0 0 6px; }
+    #cursor { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #cc2222; display: none; pointer-events: none; }
+
+    /* floating preview */
+    #preview {
+      position: absolute; bottom: 54px; transform: translateX(-50%);
+      display: none; pointer-events: none;
+      background: #000; border: 2px solid #fff; border-radius: 6px;
+      box-shadow: 0 6px 20px #0006; overflow: hidden; width: 284px;
+    }
+    #preview img { display: block; width: 284px; height: 160px; object-fit: cover; background: #222; }
+    #preview .t { position: absolute; bottom: 0; left: 0; right: 0; text-align: center;
+      font: 600 13px/1.6 system-ui; color: #fff; background: #000a; }
+    #preview.loading img { opacity: .35; }
+    code { background: #f2f2f2; padding: 1px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>HLS trickplay — hover preview</h1>
+  <p>Hover the bar to scrub a VOD. Each thumbnail is a ~16&nbsp;KB range fetch of the segment head, decoded to JPEG in-browser. Nothing is precomputed.</p>
+
+  <input type="text" id="url" placeholder="master.m3u8 URL" />
+  <button id="go">Load manifest</button>
+  <p id="meta"></p>
+
+  <div id="bar">
+    <div id="played"></div>
+    <div id="cursor"></div>
+    <div id="preview"><img id="pimg" alt=""><div class="t" id="ptime"></div></div>
+  </div>
+
+  <script type="module">
+    import { openTrickplay, formatTime } from './trickplay.js';
+
+    const el = (id) => document.getElementById(id);
+    const bar = el('bar'), preview = el('preview'), pimg = el('pimg'), ptime = el('ptime'), cursor = el('cursor');
+    let tp = null, hoverToken = 0;
+
+    async function load(url) {
+      el('meta').textContent = 'Loading manifest…';
+      try {
+        tp = await openTrickplay(url, { headBytes: 16 * 1024 });
+        const v = tp.variant;
+        el('meta').textContent =
+          `${tp.segmentCount} segments · ${formatTime(tp.totalDuration)} total` +
+          (v ? ` · sampling ${v.resolution || v.bandwidth + 'bps'} (lowest rung)` : '');
+        // reflect in URL for sharing
+        const share = new URL(location.href);
+        share.searchParams.set('src', url);
+        history.replaceState(null, '', share);
+      } catch (e) {
+        el('meta').textContent = 'Error: ' + e.message;
+        tp = null;
+      }
+    }
+
+    function timeFromEvent(e) {
+      const r = bar.getBoundingClientRect();
+      const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      return { frac, seconds: frac * (tp?.totalDuration ?? 0) };
+    }
+
+    bar.addEventListener('mousemove', async (e) => {
+      if (!tp) return;
+      const { frac, seconds } = timeFromEvent(e);
+      const r = bar.getBoundingClientRect();
+      const x = frac * r.width;
+      cursor.style.display = 'block';
+      cursor.style.left = x + 'px';
+      preview.style.display = 'block';
+      // clamp preview box within the bar width
+      preview.style.left = Math.min(Math.max(x, 144), r.width - 144) + 'px';
+      ptime.textContent = formatTime(seconds);
+
+      const token = ++hoverToken;
+      preview.classList.add('loading');
+      tp.prefetchAround(seconds, 1);
+      try {
+        const src = await tp.thumbUrlAt(seconds);
+        if (token !== hoverToken) return;      // a newer hover superseded this one
+        pimg.src = src;
+        preview.classList.remove('loading');
+      } catch {
+        if (token === hoverToken) preview.classList.remove('loading');
+      }
+    });
+
+    bar.addEventListener('mouseleave', () => {
+      hoverToken++;
+      preview.style.display = 'none';
+      cursor.style.display = 'none';
+    });
+
+    el('go').addEventListener('click', () => { if (el('url').value.trim()) load(el('url').value.trim()); });
+    el('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') el('go').click(); });
+
+    // shareable ?src=
+    const initial = new URLSearchParams(location.search).get('src');
+    if (initial) { el('url').value = initial; load(initial); }
+  </script>
+</body>
+</html>
