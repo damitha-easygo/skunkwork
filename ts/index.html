@@ -38,10 +38,28 @@
     player.addEventListener('tsready',     (e) => { status.textContent = 'Playing — MP4 is ' + e.detail.bytes.toLocaleString() + ' bytes'; });
     player.addEventListener('tserror',     (e) => { status.textContent = 'Error: ' + e.detail.error.message; });
 
-    document.getElementById('go').addEventListener('click', () => {
-      if (url.value.trim()) player.setAttribute('src', url.value.trim());
+    function play(src, { push = true } = {}) {
+      src = src.trim();
+      if (!src) return;
+      url.value = src;
+      player.setAttribute('src', src);
+      // reflect into the URL so the page is shareable
+      const share = new URL(location.href);
+      share.searchParams.set('src', src);
+      history[push ? 'pushState' : 'replaceState'](null, '', share);
+    }
+
+    document.getElementById('go').addEventListener('click', () => play(url.value));
+    url.addEventListener('keydown', (e) => { if (e.key === 'Enter') play(url.value); });
+    // back/forward between shared links
+    addEventListener('popstate', () => {
+      const s = new URLSearchParams(location.search).get('src');
+      if (s) play(s, { push: false });
     });
-    url.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('go').click(); });
+
+    // populate + auto-play from ?src= (shared link)
+    const initial = new URLSearchParams(location.search).get('src');
+    if (initial) play(initial, { push: false });
   </script>
 </body>
 </html>
