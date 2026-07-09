@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ts-video demo</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+    h1 { font-size: 20px; }
+    ts-video { width: 100%; max-width: 640px; border-radius: 8px; overflow: hidden; }
+    .row { display: flex; gap: 8px; margin: 16px 0; }
+    input { flex: 1; padding: 8px; font: inherit; }
+    button { padding: 8px 14px; font: inherit; }
+    #status { color: #666; min-height: 1.4em; }
+    code { background: #f2f2f2; padding: 1px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>&lt;ts-video&gt; — MPEG-TS → MP4 in the browser</h1>
+  <p>Fetches a <code>.ts</code> file, remuxes it to MP4 via WebAssembly, and plays it from a blob URL. Video-only (audio dropped).</p>
+
+  <div class="row">
+    <input id="url" placeholder="https://…/clip.ts" />
+    <button id="go">Load</button>
+  </div>
+  <p id="status"></p>
+
+  <ts-video id="player" controls autoplay muted loop playsinline></ts-video>
+
+  <script type="module">
+    import './ts-video.js';
+
+    const player = document.getElementById('player');
+    const status = document.getElementById('status');
+    const url = document.getElementById('url');
+
+    player.addEventListener('tsloadstart', (e) => { status.textContent = 'Fetching + remuxing ' + e.detail.src + ' …'; });
+    player.addEventListener('tsready',     (e) => { status.textContent = 'Playing — MP4 is ' + e.detail.bytes.toLocaleString() + ' bytes'; });
+    player.addEventListener('tserror',     (e) => { status.textContent = 'Error: ' + e.detail.error.message; });
+
+    document.getElementById('go').addEventListener('click', () => {
+      if (url.value.trim()) player.setAttribute('src', url.value.trim());
+    });
+    url.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('go').click(); });
+  </script>
+</body>
+</html>
