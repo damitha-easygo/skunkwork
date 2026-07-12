@@ -40,15 +40,29 @@ function parseVariant(text, baseUrl) {
   const segments = [];
   let start = 0;
   let pendingDur = null;
+  let pendingRange = null;      // { length, offset|null } from #EXT-X-BYTERANGE
+  let lastUrl = null, lastEnd = 0;
   for (const raw of lines) {
     const line = raw.trim();
     if (line.startsWith('#EXTINF:')) {
       pendingDur = parseFloat(line.slice('#EXTINF:'.length));
+    } else if (line.startsWith('#EXT-X-BYTERANGE:')) {
+      const [len, off] = line.slice('#EXT-X-BYTERANGE:'.length).split('@');
+      pendingRange = { length: parseInt(len, 10), offset: off !== undefined ? parseInt(off, 10) : null };
     } else if (line && !line.startsWith('#')) {
+      const url = new URL(line, baseUrl).href;
+      // Byte-range segments: many parts share one .ts, addressed by len@offset.
+      // A missing offset means "continue after the previous sub-range of this URL".
+      let byteStart = 0, byteLength = null;
+      if (pendingRange) {
+        byteLength = pendingRange.length;
+        byteStart = pendingRange.offset != null ? pendingRange.offset : (url === lastUrl ? lastEnd : 0);
+      }
       const duration = pendingDur ?? 0;
-      segments.push({ index: segments.length, url: new URL(line, baseUrl).href, start, duration });
+      segments.push({ index: segments.length, url, start, duration, byteStart, byteLength });
       start += duration;
-      pendingDur = null;
+      lastUrl = url; lastEnd = byteStart + (byteLength ?? 0);
+      pendingDur = null; pendingRange = null;
     }
   }
   return { segments, totalDuration: start };
@@ -139,9 +153,13 @@ export async function openTrickplay(url, opts = {}) {
   const inflight = new Map(); // segment index -> Promise<string>
 
   async function fetchAndDecode(seg, signal) {
-    let want = headBytes;
+    // Byte-range segments start at seg.byteStart; the first IDR sits there. The
+    // cap is the part length (don't read into the next part), else maxHeadBytes.
+    const startByte = seg.byteStart || 0;
+    const cap = seg.byteLength != null ? Math.min(maxHeadBytes, seg.byteLength) : maxHeadBytes;
+    let want = Math.min(headBytes, cap);
     for (;;) {
-      const resp = await fetch(seg.url, { headers: { Range: `bytes=0-${want - 1}` }, signal });
+      const resp = await fetch(seg.url, { headers: { Range: `bytes=${startByte}-${startByte + want - 1}` }, signal });
       if (!resp.ok && resp.status !== 206 && resp.status !== 200) {
         throw new Error(`fetch segment ${resp.status}: ${seg.url}`);
       }
@@ -151,11 +169,11 @@ export async function openTrickplay(url, opts = {}) {
         return URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
       }
       // rc === 1: head ended before a full IDR. Grow and retry.
-      // If the server already returned less than we asked (short segment), stop.
-      if (rc !== 1 || head.length < want || want >= maxHeadBytes) {
+      // If the server already returned less than we asked (whole part fetched), stop.
+      if (rc !== 1 || head.length < want || want >= cap) {
         throw new Error(`decode failed for ${seg.url} (rc=${rc}, head=${head.length}B)`);
       }
-      want = Math.min(want * 2, maxHeadBytes);
+      want = Math.min(want * 2, cap);
     }
   }
 

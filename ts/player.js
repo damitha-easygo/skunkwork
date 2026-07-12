@@ -28,13 +28,16 @@ export async function createPlayer(masterUrl, { title = '' } = {}) {
 
   /* ---- playback engine ------------------------------------------------- */
   let hls = null;
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = masterUrl;                       // Safari / iOS native HLS
-  } else if (window.Hls && window.Hls.isSupported()) {
+  if (window.Hls && window.Hls.isSupported()) {
+    // Prefer hls.js/MSE. Chrome reports canPlayType('…mpegurl')='maybe' but
+    // can't actually play HLS natively, so native must NOT be tried first —
+    // otherwise byte-range (and plain) VODs fail with a src-not-supported error.
     hls = new window.Hls({ maxBufferLength: 30, capLevelToPlayerSize: true });
     hls.loadSource(masterUrl);
     hls.attachMedia(video);
     hls.on(window.Hls.Events.ERROR, (_e, data) => { if (data.fatal) console.error('[hls]', data.type, data.details); });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = masterUrl;                       // iOS Safari — native HLS, no MSE
   } else {
     setStatus('This browser cannot play HLS.');
   }
