@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kick Chat over MoQ</title>
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%2353fc18'/><text x='50' y='72' font-size='64' font-weight='bold' text-anchor='middle' font-family='Arial' fill='%23000'>K</text></svg>" />
+</head>
+<body>
+  <!-- Landing (shown when no ?channel= / #slug) -->
+  <div id="landing" class="landing hidden">
+    <h1><em>Kick</em> Chat over MoQ</h1>
+    <p>Live Kick chat, end-to-end encrypted, delivered over a Cloudflare Media-over-QUIC relay.</p>
+    <form id="go">
+      <input id="slug" type="text" placeholder="e.g. deenthegreat" autofocus autocomplete="off" spellcheck="false" />
+      <button type="submit">Open Chat</button>
+    </form>
+    <div class="examples">
+      <a data-slug="deenthegreat">deenthegreat</a>
+      <a data-slug="tbone_gaming">tbone_gaming</a>
+      <a data-slug="xqc">xqc</a>
+    </div>
+    <p style="font-size:12px;max-width:440px;text-align:center">Only channels the publisher worker is bridging will show live messages. History always loads from Kick.</p>
+  </div>
+
+  <!-- Chat viewer (shown when a slug is present) -->
+  <div id="app" class="hidden">
+    <header id="chat-header">
+      <span class="header-spacer"></span>
+      <h1>Chat <span style="color:#53fc18;font-size:11px;vertical-align:2px">MoQ</span></h1>
+      <button class="icon-btn" id="chatters-btn" title="Chatters">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-7 1.7-7 4v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2c0-2.3-3.7-4-7-4Zm8.5-2.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm.5 2c-.6 0-1.2.1-1.8.2 1.7 1 2.8 2.4 2.8 4.3V19h4a1 1 0 0 0 1-1v-1.5c0-2-3.3-4-6-4Z"/></svg>
+      </button>
+    </header>
+
+    <div id="pinned-bar" class="hidden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3a1 1 0 0 1 1 1v1l2 5h-4.3l-.7 9.3a1 1 0 0 1-2 0L11.3 10H7l2-5V4a1 1 0 0 1 1-1h6Z"/></svg>
+      <div id="pinned-content"></div>
+      <button class="icon-btn small" id="pinned-close" title="Dismiss">✕</button>
+    </div>
+
+    <main id="messages" aria-live="polite"></main>
+
+    <button id="scroll-paused" class="hidden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 16.5 5 9.5l1.4-1.4 5.6 5.6 5.6-5.6L19 9.5l-7 7Z"/></svg>
+      Chat paused due to scroll
+    </button>
+
+    <footer id="chat-footer">
+      <div id="input-box">
+        <svg class="identity-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>
+        <input id="chat-input" type="text" placeholder="Send a message" autocomplete="off" />
+        <button class="icon-btn" id="emoji-btn" title="Emotes">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16ZM8.5 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm7 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm-8.2 3.2a1 1 0 0 1 1.4-.2 5.6 5.6 0 0 0 6.6 0 1 1 0 0 1 1.2 1.6 7.6 7.6 0 0 1-9 0 1 1 0 0 1-.2-1.4Z"/></svg>
+        </button>
+      </div>
+      <div id="bottom-bar">
+        <div id="status">
+          <span id="status-dot"></span>
+          <span id="status-text">Connecting…</span>
+        </div>
+        <div class="bottom-right">
+          <button class="icon-btn" id="settings-btn" title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5a.5.5 0 0 0 .1-.7l-2-3.4a.5.5 0 0 0-.6-.2l-2.4 1a7.6 7.6 0 0 0-1.7-1L14.5 2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.3 2.6a7.6 7.6 0 0 0-1.7 1l-2.4-1a.5.5 0 0 0-.6.2l-2 3.4a.5.5 0 0 0 .1.7l2 1.5a7.8 7.8 0 0 0 0 2l-2 1.5a.5.5 0 0 0-.1.7l2 3.4c.1.2.4.3.6.2l2.4-1c.5.4 1.1.8 1.7 1l.3 2.6c0 .3.3.4.5.4h4c.3 0 .5-.2.5-.4l.3-2.6a7.6 7.6 0 0 0 1.7-1l2.4 1c.2.1.5 0 .6-.2l2-3.4a.5.5 0 0 0-.1-.7l-2-1.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+          </button>
+          <button id="send-btn">Chat</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // GitHub Pages has no path rewrites, so the slug comes from ?channel= or #slug.
+    const slug = (new URLSearchParams(location.search).get('channel') || location.hash.replace(/^#/, '')).trim();
+    if (slug) {
+      document.getElementById('app').classList.remove('hidden');
+      const s = document.createElement('script');
+      s.type = 'module';
+      s.src = './moq-viewer.js';
+      document.body.appendChild(s);
+    } else {
+      const l = document.getElementById('landing');
+      l.classList.remove('hidden');
+      const go = (v) => { const x = v.trim().toLowerCase().replace(/^https?:\/\/(www\.)?kick\.com\//, '').split('/')[0]; if (x) location.search = '?channel=' + encodeURIComponent(x); };
+      document.getElementById('go').addEventListener('submit', (e) => { e.preventDefault(); go(document.getElementById('slug').value); });
+      for (const a of l.querySelectorAll('.examples a')) a.addEventListener('click', () => go(a.dataset.slug));
+    }
+  </script>
+</body>
+</html>
