@@ -14325,30 +14325,51 @@ var require_viewer_pages = __commonJS({
     async function runMoq(relay, path, key) {
       for (; ; ) {
         let conn;
+        let connClosed = false;
         try {
           setStatus("", "Connecting to MoQ relay\u2026");
           conn = await connection_exports.connect(new URL(relay), { signal: AbortSignal.timeout(1e4) });
-          setStatus("live", `Connected via MoQ (${conn.version}, ${window.location.hostname === "localhost" ? path.slice(0, 18) + "\u2026" : "relay"})`);
-          const broadcast = conn.consume(path_exports.from(path));
-          const sub = broadcast.subscribe("chat", { ordered: true });
-          for (; ; ) {
-            const group = await sub.recvGroup();
-            if (!group) break;
-            for (; ; ) {
-              const frame = await group.readFrame();
-              if (!frame) break;
-              try {
-                const text = await decrypt(key, new Uint8Array(frame.payload));
-                const parsed = safeParse2(text);
-                if (parsed) handlePusherFrame(parsed);
-              } catch (e) {
-                console.warn("failed to decrypt frame", e);
+          conn.closed?.then(() => {
+            connClosed = true;
+          }).catch(() => {
+            connClosed = true;
+          });
+          setStatus("", "Waiting for broadcast\u2026");
+          let everGotData = false;
+          while (!connClosed) {
+            try {
+              const sub = conn.consume(path_exports.from(path)).subscribe("chat", { ordered: true });
+              for (; ; ) {
+                const group = await sub.recvGroup();
+                if (!group) break;
+                if (!everGotData) {
+                  everGotData = true;
+                  setStatus("live", `Connected via MoQ (${conn.version})`);
+                }
+                for (; ; ) {
+                  const frame = await group.readFrame();
+                  if (!frame) break;
+                  try {
+                    const text = await decrypt(key, new Uint8Array(frame.payload));
+                    const parsed = safeParse2(text);
+                    if (parsed) handlePusherFrame(parsed);
+                  } catch (e) {
+                    console.warn("failed to decrypt frame", e);
+                  }
+                }
               }
+            } catch (e) {
+              const msg = String(e);
+              if (/connection|WebTransport|closed|session/i.test(msg) && !/not found/i.test(msg)) {
+                throw e;
+              }
+              setStatus("", "Waiting for broadcast\u2026");
+              await new Promise((r) => setTimeout(r, 400));
             }
           }
-          setStatus("dead", "MoQ track ended, reconnecting\u2026");
+          setStatus("dead", "MoQ reconnecting\u2026");
         } catch (e) {
-          console.warn("moq connection failed", e);
+          console.warn("moq connection failed", String(e).slice(0, 120));
           setStatus("dead", "MoQ reconnecting\u2026");
         } finally {
           try {
