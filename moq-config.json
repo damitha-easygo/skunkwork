@@ -1,5 +1,5 @@
 {
-  "relay": "https://draft-16.cloudflare.mediaoverquic.com/eyJhbGciOiJFZERTQSIsImtpZCI6Im1vcS12MSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJtb3EuY2xvdWRmbGFyZS5jb20iLCJleHAiOjE4MTgwNzExMzcsImlhdCI6MTc4NjUzNTEzNywiaXNzIjoiY2xvdWRmbGFyZSIsImp0aSI6IjU5ODgxMTdjZGFkNWI5N2Q4NDQ1YzNlMTg4OGFhNjcxIiwib3BlcmF0aW9ucyI6WyJwdWJsaXNoIiwic3Vic2NyaWJlIl0sInN1YiI6IjU3ODNhM2U0NDkxNzI4NzhkZmQyN2EyMTgxNTQ4MmY0In0.5DcmgVnPkJhUmB1dZDalKUTeYFIYvT4I974PS7j-ArdJlTJmyeFO07lglE7wXp7_CP9sBP5rMLfExo8cXuS8Dw",
+  "relay": "https://cdn.moq.pro/anon",
   "namespace": "b3c79d639496",
   "shared_key": "c15612bf653d2767c948ca439d9de601"
 }
