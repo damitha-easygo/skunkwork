@@ -14328,7 +14328,14 @@ var require_viewer_pages = __commonJS({
         let connClosed = false;
         try {
           setStatus("", "Connecting to MoQ relay\u2026");
-          conn = await connection_exports.connect(new URL(relay), { signal: AbortSignal.timeout(1e4) });
+          const props = { signal: AbortSignal.timeout(1e4) };
+          if (new URLSearchParams(location.search).get("forcewt") === "1" && typeof WebTransport !== "undefined") {
+            setStatus("", "Forcing WebTransport\u2026");
+            const wt = new WebTransport(new URL(relay));
+            await wt.ready;
+            props.transport = wt;
+          }
+          conn = await connection_exports.connect(new URL(relay), props);
           conn.closed?.then(() => {
             connClosed = true;
           }).catch(() => {
