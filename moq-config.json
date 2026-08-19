@@ -1,5 +1,6 @@
 {
   "relay": "https://cdn.moq.pro/anon",
   "namespace": "b3c79d639496",
-  "shared_key": "c15612bf653d2767c948ca439d9de601"
+  "shared_key": "c15612bf653d2767c948ca439d9de601",
+  "poll_base": "https://54.66.11.3.sslip.io"
 }

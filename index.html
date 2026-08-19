@@ -11,11 +11,15 @@
   <!-- Landing (shown when no ?channel= / #slug) -->
   <div id="landing" class="landing hidden">
     <h1><em>Kick</em> Chat over MoQ</h1>
-    <p>Live Kick chat, end-to-end encrypted, delivered over a Cloudflare Media-over-QUIC relay.</p>
+    <p>Live Kick chat, end-to-end encrypted, delivered over a Media-over-QUIC relay — or via cacheable brotli polling over HTTP/3 (2s streamed buckets).</p>
     <form id="go">
       <input id="slug" type="text" placeholder="e.g. deenthegreat" autofocus autocomplete="off" spellcheck="false" />
       <button type="submit">Open Chat</button>
     </form>
+    <div class="examples" style="gap:14px">
+      <label style="cursor:pointer"><input type="radio" name="via" value="moq" checked /> MoQ</label>
+      <label style="cursor:pointer"><input type="radio" name="via" value="poll" /> H3 poll</label>
+    </div>
     <div class="examples">
       <a data-slug="deenthegreat">deenthegreat</a>
       <a data-slug="tbone_gaming">tbone_gaming</a>
@@ -72,17 +76,26 @@
 
   <script>
     // GitHub Pages has no path rewrites, so the slug comes from ?channel= or #slug.
-    const slug = (new URLSearchParams(location.search).get('channel') || location.hash.replace(/^#/, '')).trim();
+    // ?via=poll switches to the cacheable-poll transport (streamed 2s brotli buckets over H3).
+    const params = new URLSearchParams(location.search);
+    const slug = (params.get('channel') || location.hash.replace(/^#/, '')).trim();
+    const viaPoll = params.get('via') === 'poll';
     if (slug) {
       document.getElementById('app').classList.remove('hidden');
+      if (viaPoll) {
+        const badge = document.querySelector('#chat-header h1 span');
+        badge.textContent = 'H3 POLL';
+        badge.style.color = '#ff9d00';
+      }
       const s = document.createElement('script');
       s.type = 'module';
-      s.src = './moq-viewer.js';
+      s.src = viaPoll ? './poll-viewer.js' : './moq-viewer.js';
       document.body.appendChild(s);
     } else {
       const l = document.getElementById('landing');
       l.classList.remove('hidden');
-      const go = (v) => { const x = v.trim().toLowerCase().replace(/^https?:\/\/(www\.)?kick\.com\//, '').split('/')[0]; if (x) location.search = '?channel=' + encodeURIComponent(x); };
+      const via = () => (l.querySelector('input[name="via"]:checked')?.value === 'poll' ? '&via=poll' : '');
+      const go = (v) => { const x = v.trim().toLowerCase().replace(/^https?:\/\/(www\.)?kick\.com\//, '').split('/')[0]; if (x) location.search = '?channel=' + encodeURIComponent(x) + via(); };
       document.getElementById('go').addEventListener('submit', (e) => { e.preventDefault(); go(document.getElementById('slug').value); });
       for (const a of l.querySelectorAll('.examples a')) a.addEventListener('click', () => go(a.dataset.slug));
     }
