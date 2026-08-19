@@ -328,7 +328,7 @@ async function boot() {
   // Poll base: ?poll= param overrides the worker-shared config (GitHub Pages build).
   let config = {};
   try {
-    config = await fetch('./moq-config.json').then((r) => (r.ok ? r.json() : {}));
+    config = await fetch('./moq-config.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : {}));
   } catch {}
   const base = (params.get('poll') || config.poll_base || '').replace(/\/$/, '');
   if (!base) {
