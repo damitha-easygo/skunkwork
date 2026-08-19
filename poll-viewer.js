@@ -230,10 +230,19 @@ function noteLatency(ms) {
 }
 
 async function syncClock(base) {
-  const t0 = Date.now();
-  const ep = await fetch(`${base}/chat/epoch`).then((r) => r.json());
-  const t1 = Date.now();
-  return { offset: ep.now - (t0 + t1) / 2, batchMs: ep.batchMs };
+  // Sample 3x and keep the min-RTT estimate: the first request pays the
+  // DNS/QUIC/TLS handshake, which skews the midpoint method by ~half the
+  // handshake time; warm-connection samples are accurate.
+  let best = null;
+  let batchMs = 500;
+  for (let i = 0; i < 3; i++) {
+    const t0 = Date.now();
+    const ep = await fetch(`${base}/chat/epoch`).then((r) => r.json());
+    const t1 = Date.now();
+    batchMs = ep.batchMs;
+    if (!best || t1 - t0 < best.rtt) best = { rtt: t1 - t0, offset: ep.now - (t0 + t1) / 2 };
+  }
+  return { offset: best.offset, batchMs };
 }
 
 async function runPoll(base, slug) {
