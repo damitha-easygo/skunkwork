@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 9 16%22%3E%3Crect width=%229%22 height=%227.8%22 fill=%22%23ff4d6d%22/%3E%3Crect y=%228.2%22 width=%229%22 height=%227.8%22 fill=%22%234dabff%22/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portrait Stack · Creator</title>
+  <script type="module" crossorigin src="./assets/main-CgynslPi.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/shared-XquFmhTq.js">
+  <link rel="stylesheet" crossorigin href="./assets/main-D-KilgWo.css">
+</head>
+<body>
+<header>
+	<h1>Portrait Stack <small>creator</small></h1>
+	<span id="status" class="status">connecting…</span>
+	<div class="share">
+		<input id="share-url" readonly>
+		<button id="copy">Copy viewer link</button>
+		<a id="open-viewer" target="_blank" rel="noopener">Open ↗</a>
+	</div>
+</header>
+
+<main>
+	<section class="pane source">
+		<h2>Source (landscape) · drag the boxes</h2>
+		<div id="stage" class="stage">
+			<video id="video" crossorigin="anonymous" playsinline muted></video>
+			<div class="box top" data-slot="top"><span>TOP</span><i class="handle"></i></div>
+			<div class="box bottom" data-slot="bottom"><span>BOTTOM</span><i class="handle"></i></div>
+		</div>
+		<div class="toolbar">
+			<button id="play">▶ Play</button>
+			<input id="seek" type="range" min="0" max="0" step="0.1" value="0">
+			<span id="time" class="time">0:00 / 0:00</span>
+			<button id="mute">🔇</button>
+			<button id="swap">Swap top/bottom</button>
+		</div>
+		<p class="hint">
+			Boxes are locked to 9:8, so the two stacked crops make 9:16. Every move is tagged with the media time
+			and sent with the playhead over MoQ, so viewers seek to your position and switch crops on the same frame.
+		</p>
+	</section>
+
+	<section class="pane phone">
+		<h2>Viewer (through the relay)</h2>
+		<div class="phone-frame"><iframe id="viewer" title="Viewer preview" allow="autoplay"></iframe></div>
+	</section>
+</main>
+
+</body>
+</html>
