@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HLS.js Player</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  video { width: min(100%, 960px); background: #000; border-radius: 8px; }
+  textarea { width: min(100%, 960px); height: 90px; font-family: ui-monospace, monospace;
+             font-size: 12px; background: #1b1b1b; color: #ddd; border: 1px solid #333;
+             border-radius: 6px; padding: 8px; box-sizing: border-box; }
+  .row { display: flex; gap: 8px; width: min(100%, 960px); }
+  button { padding: 8px 16px; border: 0; border-radius: 6px; background: #3b82f6; color: #fff;
+           font-size: 14px; cursor: pointer; }
+  button:hover { background: #2563eb; }
+  #log { width: min(100%, 960px); height: 140px; overflow: auto; font-family: ui-monospace, monospace;
+         font-size: 12px; background: #000; border: 1px solid #333; border-radius: 6px; padding: 8px; }
+  .err { color: #f87171; }
+</style>
+</head>
+<body>
+<video id="video" controls playsinline></video>
+<div class="row">
+  <input id="url" style="flex:1; padding:8px; border-radius:6px; border:1px solid #333; background:#1b1b1b; color:#ddd;"
+         placeholder="Playlist URL (.m3u8)">
+  <button id="loadUrl">Load URL</button>
+</div>
+<textarea id="manifest" placeholder="…or paste the playlist text here"></textarea>
+<div class="row">
+  <button id="loadText">Load pasted playlist</button>
+  <button id="play">Play</button>
+</div>
+<div id="engine" style="width:min(100%,960px);font-family:ui-monospace,monospace;font-size:13px;">Engine: <b>—</b></div>
+<div id="log"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"
+        onerror="window.__hlsLoadFailed=true"></script>
+<script>
+const video = document.getElementById('video');
+const logEl = document.getElementById('log');
+const engineEl = document.getElementById('engine').querySelector('b');
+let hls;
+
+function setEngine(name) { engineEl.textContent = name; }
+
+function log(msg, isErr) {
+  const d = document.createElement('div');
+  if (isErr) d.className = 'err';
+  d.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function attach(src) {
+  if (hls) { hls.destroy(); hls = null; }
+  video.removeAttribute('src');
+  video.load();
+
+  if (window.__hlsLoadFailed || typeof Hls === 'undefined') {
+    log('hls.js failed to load from CDN — check network/CSP', true);
+    setEngine('none (hls.js not loaded)');
+    return;
+  }
+
+  // Prefer hls.js wherever it is supported. Only fall back to the browser's
+  // own HLS (Safari/iOS) when MSE-based hls.js genuinely cannot run.
+  if (!Hls.isSupported()) {
+    setEngine('native (browser HLS — hls.js unsupported here)');
+    video.src = src;
+    log('hls.js not supported; using native HLS playback');
+    return;
+  }
+
+  setEngine('hls.js ' + Hls.version);
+  hls = new Hls({ debug: true });
+  hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+    log('Manifest parsed: ' + data.levels.length + ' level(s)');
+    video.play().catch(() => log('Autoplay blocked — press Play', true));
+  });
+  hls.on(Hls.Events.ERROR, (_e, data) => {
+    log('ERROR ' + data.type + ' / ' + data.details +
+        (data.response ? ' (HTTP ' + data.response.code + ')' : '') +
+        (data.fatal ? ' [fatal]' : ''), true);
+  });
+  hls.loadSource(src);
+  hls.attachMedia(video);
+}
+
+document.getElementById('loadUrl').onclick = () => {
+  const u = document.getElementById('url').value.trim();
+  if (u) attach(u);
+};
+
+document.getElementById('loadText').onclick = () => {
+  const text = document.getElementById('manifest').value;
+  if (!text.trim()) return;
+  // Serve the pasted manifest to hls.js via a blob URL.
+  const blob = new Blob([text], { type: 'application/vnd.apple.mpegurl' });
+  attach(URL.createObjectURL(blob));
+};
+
+document.getElementById('play').onclick = () => video.play();
+
+// Fetch only a byte-range of a URL and return the body text.
+// `byterange` uses HLS syntax: "<length>@<offset>", e.g. "6895@5464".
+async function fetchRangeText(url, byterange) {
+  const [lenStr, offStr] = byterange.split('@');
+  const length = parseInt(lenStr, 10);
+  const offset = parseInt(offStr || '0', 10);
+  const end = offset + length - 1; // inclusive
+  log('Fetching ' + url + '  Range: bytes=' + offset + '-' + end);
+  const res = await fetch(url, { headers: { Range: 'bytes=' + offset + '-' + end } });
+  log('HTTP ' + res.status + (res.status === 206 ? ' (Partial Content)' : ''),
+      res.status !== 206 && res.status !== 200);
+  if (!res.ok) throw new Error('Range fetch failed: HTTP ' + res.status);
+  const text = await res.text();
+  log('Got ' + text.length + ' bytes of manifest');
+  return text;
+}
+
+async function loadFromQuery() {
+  const q = new URLSearchParams(location.search);
+  const url = q.get('url');
+  if (!url) {
+    // No query param — fall back to the sibling playlist for convenience.
+    document.getElementById('url').value = 'playlist_byterange_offset.m3u8';
+    return;
+  }
+  document.getElementById('url').value = url;
+  // Accept either ?byterange=len@off  or  ?offset=..&length=..
+  let byterange = q.get('byterange') || q.get('range');
+  if (!byterange && q.get('length')) {
+    byterange = q.get('length') + '@' + (q.get('offset') || '0');
+  }
+
+  try {
+    if (byterange) {
+      const text = await fetchRangeText(url, byterange);
+      document.getElementById('manifest').value = text;
+      const blob = new Blob([text], { type: 'application/vnd.apple.mpegurl' });
+      attach(URL.createObjectURL(blob));
+    } else {
+      attach(url); // whole file
+    }
+  } catch (e) {
+    log(e.message, true);
+  }
+}
+
+loadFromQuery();
+</script>
+</body>
+</html>
