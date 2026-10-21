@@ -22,7 +22,7 @@
 </style>
 </head>
 <body>
-<video id="video" controls playsinline></video>
+<video id="video" controls playsinline autoplay muted></video>
 <div class="row">
   <input id="url" style="flex:1; padding:8px; border-radius:6px; border:1px solid #333; background:#1b1b1b; color:#ddd;"
          placeholder="Playlist URL (.m3u8)">
@@ -45,6 +45,17 @@ const engineEl = document.getElementById('engine').querySelector('b');
 let hls;
 
 function setEngine(name) { engineEl.textContent = name; }
+
+// Autoplay only works muted. Try with sound first; if the browser blocks it,
+// fall back to muted autoplay (which is always allowed).
+function tryAutoplay() {
+  video.play().catch(() => {
+    video.muted = true;
+    video.play()
+      .then(() => log('Autoplaying muted — click the speaker to unmute'))
+      .catch(() => log('Autoplay blocked — press Play', true));
+  });
+}
 
 function log(msg, isErr) {
   const d = document.createElement('div');
@@ -71,6 +82,7 @@ function attach(src) {
     setEngine('native (browser HLS — hls.js unsupported here)');
     video.src = src;
     log('hls.js not supported; using native HLS playback');
+    video.addEventListener('loadedmetadata', tryAutoplay, { once: true });
     return;
   }
 
@@ -78,7 +90,7 @@ function attach(src) {
   hls = new Hls({ debug: true });
   hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
     log('Manifest parsed: ' + data.levels.length + ' level(s)');
-    video.play().catch(() => log('Autoplay blocked — press Play', true));
+    tryAutoplay();
   });
   hls.on(Hls.Events.ERROR, (_e, data) => {
     log('ERROR ' + data.type + ' / ' + data.details +
